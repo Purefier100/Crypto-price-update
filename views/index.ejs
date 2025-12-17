@@ -1,8 +1,10 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
-    <title>Ultimate Crypto Price Checker</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Price Checker</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 
@@ -10,45 +12,47 @@
     <div class="container">
         <h1>Crypto Price Checker</h1>
 
-
+        <!-- Search Form -->
         <form action="/price" method="get">
-            <input name="symbol" placeholder="BTC or Token Address" required />
-            <button>Check</button>
+            <input name="symbol" placeholder="Coin symbol or token address" required />
+            <button type="submit">Check Price</button>
         </form>
 
-
-        <% if (data) { %>
-            <div class="card">
-                <img src="<%= data.logo %>" />
-                <h2>
-                    <%= data.name %> (<%= data.symbol %>)
-                </h2>
-                <p class="price">$<%= data.price %>
-                </p>
-                <p class="change <%= data.change >= 0 ? 'up' : 'down' %>">
-                    24h: <%= data.change %>%
-                </p>
-                <p class="network">Network: <%= data.network %>
-                </p>
-
-
-                <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.symbol %>USD&interval=15"
-                    frameborder="0"></iframe>
-            </div>
+        <!-- Error Message -->
+        <% if (error) { %>
+            <p class="error">
+                <%= error %>
+            </p>
             <% } %>
 
+                <!-- Coin Data -->
+                <% if (data) { %>
+                    <div class="card">
+                        <div class="top">
+                            <img src="<%= data.logo %>" alt="<%= data.symbol %> Logo" />
+                            <h2>
+                                <%= data.name %> (<%= data.symbol %>)
+                            </h2>
+                        </div>
 
-                <% if (error) { %>
-                    <p class="error">
-                        <%= error %>
-                    </p>
+                        <p class="price">$<%= Number(data.price).toLocaleString() %>
+                        </p>
+
+                        <p class="change <%= data.change >= 0 ? 'up' : 'down' %>">
+                            24h Change: <%= data.change.toFixed(2) %>%
+                        </p>
+
+                        <p class="network">Network: <%= data.network %>
+                        </p>
+
+                        <% if (data.chartSymbol) { %>
+                            <iframe
+                                src="https://s.tradingview.com/widgetembed/?symbol=<%= data.chartSymbol %>&interval=15"
+                                frameborder="0"></iframe>
+                            <% } %>
+                    </div>
                     <% } %>
     </div>
-
-
-    <script>
-        setTimeout(() => location.reload(), 30000);
-    </script>
 </body>
 
 </html>

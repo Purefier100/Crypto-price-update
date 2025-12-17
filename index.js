@@ -9,54 +9,33 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Static folder & views
 app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
 // -------------------------
-// Data stores
+// Load all coins from CoinGecko (cached in memory)
 // -------------------------
-let binanceCoins = [];
-let dexCoins = [];
+let allCoins = [];
 
-// -------------------------
-// Load Binance coins
-// -------------------------
-async function loadBinanceCoins() {
+async function loadAllCoins() {
     try {
-        const response = await axios.get("https://api.binance.com/api/v3/ticker/24hr");
-        binanceCoins = response.data.map((c) => ({
-            symbol: c.symbol,
-            price: parseFloat(c.lastPrice),
-            change: parseFloat(c.priceChangePercent),
-            network: "Binance",
-            logo: null, // will try to fetch from CoinGecko on demand
-        }));
-        console.log(`✅ Loaded ${binanceCoins.length} coins from Binance`);
+        const response = await axios.get(
+            "https://api.coingecko.com/api/v3/coins/list"
+        );
+        allCoins = response.data; // [{id, symbol, name}, ...]
+        console.log(`✅ Loaded ${allCoins.length} coins from CoinGecko`);
     } catch (err) {
-        console.error("Failed to load Binance coins:", err.message);
+        console.error("Failed to load coins:", err.message);
     }
 }
 
-// -------------------------
-// Load DEX tokens (Dexscreener)
-// -------------------------
-async function loadDexCoins() {
-    try {
-        // Dexscreener doesn’t have a "all tokens" endpoint, we’ll keep it dynamic per request
-        dexCoins = []; // empty, will fetch on demand
-        console.log("✅ DexCoins ready for dynamic search");
-    } catch (err) {
-        console.error("Failed to initialize Dex coins:", err.message);
-    }
-}
+// Load on startup
+await loadAllCoins();
 
-// Initial load
-loadBinanceCoins();
-loadDexCoins();
-
-// Refresh every 5 minutes
-setInterval(loadBinanceCoins, 5 * 60 * 1000);
+// Optional: Refresh coin list every 24h
+setInterval(loadAllCoins, 24 * 60 * 60 * 1000);
 
 // -------------------------
 // Routes
@@ -67,62 +46,61 @@ app.get("/", (req, res) => {
 
 app.get("/price", async (req, res) => {
     const input = req.query.symbol?.trim();
-    if (!input) return res.render("index", { data: null, error: "Enter a symbol or token address" });
 
-    const symbol = input.toUpperCase();
+    if (!input) {
+        return res.render("index", { data: null, error: "Enter a coin symbol or token address" });
+    }
+
+    const symbol = input.toLowerCase();
     const isAddress = input.startsWith("0x") && input.length === 42;
 
     try {
-        let coinData = null;
+        // ------------------------- CoinGecko Dynamic Search -------------------------
+        if (!isAddress) {
+            const coin = allCoins.find(c => c.symbol.toLowerCase() === symbol);
+            if (coin) {
+                const cg = await axios.get(`https://api.coingecko.com/api/v3/coins/${coin.id}`);
 
-        // ------------------------- Binance search -------------------------
-        const binanceCoin = binanceCoins.find((c) => c.symbol === symbol || c.symbol.startsWith(symbol));
-        if (binanceCoin) {
-            // Try to get logo from CoinGecko
-            let logo = null;
-            try {
-                const cg = await axios.get(`https://api.coingecko.com/api/v3/coins/${symbol.toLowerCase()}`);
-                logo = cg.data.image.large;
-            } catch {
-                logo = null;
-            }
-
-            coinData = {
-                name: symbol,
-                symbol,
-                price: binanceCoin.price,
-                change: binanceCoin.change,
-                logo,
-                network: binanceCoin.network,
-                chartSymbol: `${symbol}USDT`,
-            };
-        }
-
-        // ------------------------- DexScreener search for address or unknown -------------------------
-        if (!coinData) {
-            // Only query Dexscreener if user entered an address or Binance not found
-            const dex = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${input}`);
-            const pairs = dex.data.pairs;
-            if (pairs && pairs.length > 0) {
-                const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
-                coinData = {
-                    name: best.baseToken.name,
-                    symbol: best.baseToken.symbol,
-                    price: best.priceUsd,
-                    change: best.priceChange?.h24 || 0,
-                    logo: best.baseToken.logoURI,
-                    network: best.chainId.toUpperCase(),
-                    chartSymbol: null,
-                };
+                return res.render("index", {
+                    data: {
+                        name: cg.data.name,
+                        symbol: cg.data.symbol.toUpperCase(),
+                        price: cg.data.market_data.current_price.usd,
+                        change: cg.data.market_data.price_change_percentage_24h,
+                        logo: cg.data.image.large,
+                        network: "Multiple",
+                        chartSymbol: `${cg.data.symbol.toUpperCase()}USD`,
+                    },
+                    error: null,
+                });
             }
         }
 
-        if (!coinData) throw new Error("Coin not found");
+        // ------------------------- DexScreener Fallback -------------------------
+        const dex = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${input}`);
+        const pairs = dex.data.pairs;
+        if (!pairs || pairs.length === 0) throw new Error();
 
-        res.render("index", { data: coinData, error: null });
+        const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+
+        return res.render("index", {
+            data: {
+                name: best.baseToken.name,
+                symbol: best.baseToken.symbol,
+                price: best.priceUsd,
+                change: best.priceChange?.h24 || 0,
+                logo: best.baseToken.logoURI,
+                network: best.chainId.toUpperCase(),
+                chartSymbol: null, // No TradingView chart for DEX tokens
+            },
+            error: null,
+        });
     } catch (err) {
-        res.render("index", { data: null, error: "Coin or token not found" });
+        return res.render("index", { data: null, error: "Coin or token not found" });
     }
 });
 
+// ------------------------- Start Server
+// -------------------------
 app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
+
