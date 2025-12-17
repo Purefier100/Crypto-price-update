@@ -4,11 +4,13 @@ body {
     color: #fff;
 }
 
+
 .container {
     max-width: 420px;
     margin: auto;
     padding: 20px;
 }
+
 
 input,
 button {
@@ -17,6 +19,7 @@ button {
     margin: 10px 0;
     border-radius: 8px;
 }
+
 
 button {
     background: #22c55e;
@@ -29,13 +32,16 @@ button {
     border-radius: 12px;
 }
 
+
 img {
     width: 50px;
 }
 
+
 .price {
     font-size: 26px;
 }
+
 
 .up {
     color: #22c55e;
@@ -44,6 +50,7 @@ img {
 .down {
     color: #ef4444;
 }
+
 
 iframe {
     width: 100%;

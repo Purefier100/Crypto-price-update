@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html>
 
 <head>
@@ -11,10 +10,12 @@
     <div class="container">
         <h1>Crypto Price Checker</h1>
 
+
         <form action="/price" method="get">
             <input name="symbol" placeholder="BTC or Token Address" required />
             <button>Check</button>
         </form>
+
 
         <% if (data) { %>
             <div class="card">
@@ -30,10 +31,12 @@
                 <p class="network">Network: <%= data.network %>
                 </p>
 
+
                 <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.symbol %>USD&interval=15"
                     frameborder="0"></iframe>
             </div>
             <% } %>
+
 
                 <% if (error) { %>
                     <p class="error">
@@ -41,6 +44,7 @@
                     </p>
                     <% } %>
     </div>
+
 
     <script>
         setTimeout(() => location.reload(), 30000);
