@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
@@ -66,10 +66,7 @@ app.get("/price", async (req, res) => {
     }
 });
 
-app.listen(PORT, () =>
-    console.log(`✅ Server running at http://localhost:${PORT}`)
-);
-
+app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
 
 
 
