@@ -8,85 +8,87 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
-// ✅ Use your API key directly
-const CMC_API_KEY = "da2668580d7548ae9e3ff54712ab19a7";
+// 🔑 Your CoinAPI key
+const COINAPI_KEY = "70dcea0e";
 
-let coinMarketData = [];
+// Cache assets from CoinAPI for name lookup
+let assetList = [];
 
-// Fetch all listings + logos
-async function loadCMCData() {
+// Load assets (name + ID) once
+async function loadAssets() {
     try {
-        // 1️⃣ Fetch price & 24h change
-        const listingsRes = await axios.get(
-            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
-            {
-                headers: { "X-CMC_PRO_API_KEY": CMC_API_KEY },
-                params: { start: 1, limit: 5000, convert: "USD" },
-            }
-        );
-
-        const coins = listingsRes.data.data; // array of coins
-
-        // 2️⃣ Fetch logos from metadata
-        const ids = coins.map(c => c.id).join(",");
-        const infoRes = await axios.get(
-            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/info",
-            {
-                headers: { "X-CMC_PRO_API_KEY": CMC_API_KEY },
-                params: { id: ids },
-            }
-        );
-
-        const infoData = infoRes.data.data;
-
-        // 3️⃣ Merge price + logo
-        coinMarketData = coins.map(c => ({
-            id: c.id,
-            name: c.name,
-            symbol: c.symbol,
-            price: c.quote.USD.price,
-            change: c.quote.USD.percent_change_24h,
-            logo: infoData[c.id]?.logo || null
-        }));
-
-        console.log(`✅ Loaded ${coinMarketData.length} coins from CoinMarketCap`);
+        const res = await axios.get("https://rest.coinapi.io/v1/assets", {
+            headers: { "X-CoinAPI-Key": COINAPI_KEY }
+        });
+        assetList = res.data; // array of { asset_id, name, type_is_crypto }
+        console.log(`Loaded ${assetList.length} assets from CoinAPI`);
     } catch (err) {
-        console.error("CMC API error:", err.response?.data || err.message);
+        console.error("Failed to load assets:", err.message);
     }
 }
 
-// Initial load & refresh every 5 minutes
-loadCMCData();
-setInterval(loadCMCData, 5 * 60 * 1000);
+loadAssets();
+
+// Helper to get CoinGecko logo by symbol
+async function fetchLogo(symbol) {
+    try {
+        const cg = await axios.get(
+            `https://api.coingecko.com/api/v3/coins/${symbol.toLowerCase()}`
+        );
+        return cg.data.image.large;
+    } catch {
+        return null;
+    }
+}
 
 app.get("/", (req, res) => {
     res.render("index", { data: null, error: null });
 });
 
-app.get("/price", (req, res) => {
+app.get("/price", async (req, res) => {
     const input = req.query.symbol?.trim().toUpperCase();
-    if (!input) return res.render("index", { data: null, error: "Enter symbol" });
+    if (!input) return res.render("index", { data: null, error: "Enter a symbol" });
 
-    const coin = coinMarketData.find(c => c.symbol.toUpperCase() === input);
+    try {
+        // Find asset name
+        const asset = assetList.find(a => a.asset_id === input);
+        const assetName = asset ? asset.name : input;
 
-    if (!coin) return res.render("index", { data: null, error: "Coin not found" });
+        // Get price from CoinAPI
+        const priceRes = await axios.get(
+            `https://rest.coinapi.io/v1/exchangerate/${input}/USD`,
+            { headers: { "X-CoinAPI-Key": COINAPI_KEY } }
+        );
 
-    res.render("index", {
-        data: {
-            name: coin.name,
-            symbol: coin.symbol,
-            price: coin.price.toFixed(6),
-            change: coin.change.toFixed(2),
-            logo: coin.logo,
-            network: "CMC",
-            chartSymbol: `${coin.symbol}USD`
-        },
-        error: null
-    });
+        const price = priceRes.data.rate; // current price in USD
+
+        // CoinAPI does not provide 24h change in this endpoint
+        const change24h = null; // not available here
+
+        // Get logo from CoinGecko fallback
+        const logo = await fetchLogo(input);
+
+        res.render("index", {
+            data: {
+                name: assetName,
+                symbol: input,
+                price: price.toFixed(6),
+                change: change24h,
+                logo,
+                network: "CoinAPI",
+                chartSymbol: `${input}USD`,
+            },
+            error: null
+        });
+    } catch (err) {
+        console.error(err.response?.data || err.message);
+        res.render("index", { data: null, error: "Coin not found or unsupported" });
+    }
 });
 
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
