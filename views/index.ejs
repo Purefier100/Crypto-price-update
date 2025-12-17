@@ -1,9 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-    <meta charset="UTF-8">
-    <title>Ultimate Crypto Price Checker</title>
+    <title>Crypto Price Checker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/style.css">
 </head>
@@ -13,30 +12,29 @@
         <h1>Crypto Price Checker</h1>
 
         <form action="/price" method="get">
-            <input name="symbol" placeholder="BTC or Token Address" required />
+            <input name="symbol" placeholder="BTC, ETH, SOL..." required />
             <button>Check</button>
         </form>
 
         <% if (data) { %>
             <div class="card">
-                <img src="<%= data.logo %>" alt="<%= data.name %> Logo" />
+                <img src="<%= data.logo %>" alt="logo">
+
                 <h2>
                     <%= data.name %> (<%= data.symbol %>)
                 </h2>
+
                 <p class="price">$<%= data.price %>
                 </p>
+
                 <p class="change <%= data.change >= 0 ? 'up' : 'down' %>">
-                    24h: <%= data.change %>%
-                </p>
-                <p class="network">Network: <%= data.network %>
+                    24h: <%= data.change.toFixed(2) %>%
                 </p>
 
-                <% if (data.chartSymbol) { %>
-                    <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.chartSymbol %>&interval=15"
-                        frameborder="0"></iframe>
-                    <% } else { %>
-                        <p class="no-chart">Chart not available for DEX token</p>
-                        <% } %>
+                <iframe
+                    src="https://s.tradingview.com/widgetembed/?symbol=<%= data.tradingView %>&interval=15&theme=dark"
+                    frameborder="0">
+                </iframe>
             </div>
             <% } %>
 
@@ -46,11 +44,6 @@
                     </p>
                     <% } %>
     </div>
-
-    <script>
-        // Auto-refresh every 5 minutes
-        setTimeout(() => location.reload(), 5 * 60 * 1000);
-    </script>
 </body>
 
 </html>
