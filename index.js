@@ -13,29 +13,26 @@ app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
+// -------------------------
+// Load top coins from CoinGecko
+// -------------------------
 let allCoins = [];
 
-// -------------------------
-// Load coins from CoinGecko with price & logo
-// -------------------------
 async function loadAllCoins() {
     try {
-        const response = await axios.get(
-            "https://api.coingecko.com/api/v3/coins/markets",
-            {
-                params: {
-                    vs_currency: "usd",
-                    order: "market_cap_desc",
-                    per_page: 250, // max per page
-                    page: 1,
-                    sparkline: false,
-                },
-            }
-        );
-        allCoins = response.data; // [{id, symbol, name, current_price, image, price_change_percentage_24h}, ...]
+        const response = await axios.get("https://api.coingecko.com/api/v3/coins/markets", {
+            params: {
+                vs_currency: "usd",
+                order: "market_cap_desc",
+                per_page: 250,  // max per page
+                page: 1,
+                sparkline: false,
+            },
+        });
+        allCoins = response.data; // contains price, symbol, logo, name, 24h change
         console.log(`✅ Loaded ${allCoins.length} coins from CoinGecko`);
     } catch (err) {
-        console.error("Failed to load coins:", err.message);
+        console.error("Failed to load CoinGecko coins:", err.message);
     }
 }
 
@@ -60,7 +57,7 @@ app.get("/price", async (req, res) => {
     try {
         let coinData = null;
 
-        // ------------------------- CoinGecko search -------------------------
+        // ------------------------- CoinGecko search (by symbol) -------------------------
         if (!isAddress) {
             const coin = allCoins.find((c) => c.symbol.toLowerCase() === symbol);
             if (coin) {
@@ -76,11 +73,12 @@ app.get("/price", async (req, res) => {
             }
         }
 
-        // ------------------------- DexScreener fallback -------------------------
+        // ------------------------- DexScreener fallback (by contract address) -------------------------
         if (!coinData) {
             const dex = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${input}`);
             const pairs = dex.data.pairs;
             if (pairs && pairs.length > 0) {
+                // Choose the pair with highest liquidity
                 const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
                 coinData = {
                     name: best.baseToken.name,
@@ -89,7 +87,7 @@ app.get("/price", async (req, res) => {
                     change: best.priceChange?.h24 || 0,
                     logo: best.baseToken.logoURI,
                     network: best.chainId.toUpperCase(),
-                    chartSymbol: null,
+                    chartSymbol: null, // no chart for DEX tokens
                 };
             }
         }
@@ -103,5 +101,6 @@ app.get("/price", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
+
 
 

@@ -1,6 +1,8 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
     <title>Ultimate Crypto Price Checker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/style.css">
@@ -10,16 +12,14 @@
     <div class="container">
         <h1>Crypto Price Checker</h1>
 
-
         <form action="/price" method="get">
             <input name="symbol" placeholder="BTC or Token Address" required />
             <button>Check</button>
         </form>
 
-
         <% if (data) { %>
             <div class="card">
-                <img src="<%= data.logo %>" />
+                <img src="<%= data.logo %>" alt="<%= data.name %> Logo" />
                 <h2>
                     <%= data.name %> (<%= data.symbol %>)
                 </h2>
@@ -31,12 +31,14 @@
                 <p class="network">Network: <%= data.network %>
                 </p>
 
-
-                <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.symbol %>USD&interval=15"
-                    frameborder="0"></iframe>
+                <% if (data.chartSymbol) { %>
+                    <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.chartSymbol %>&interval=15"
+                        frameborder="0"></iframe>
+                    <% } else { %>
+                        <p class="no-chart">Chart not available for DEX token</p>
+                        <% } %>
             </div>
             <% } %>
-
 
                 <% if (error) { %>
                     <p class="error">
@@ -45,9 +47,9 @@
                     <% } %>
     </div>
 
-
     <script>
-        setTimeout(() => location.reload(), 30000);
+        // Auto-refresh every 5 minutes
+        setTimeout(() => location.reload(), 5 * 60 * 1000);
     </script>
 </body>
 
