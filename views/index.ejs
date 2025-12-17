@@ -12,13 +12,13 @@
         <h1>Crypto Price Checker</h1>
 
         <form action="/price" method="get">
-            <input name="symbol" placeholder="BTC, ETH, SOL..." required />
+            <input name="symbol" placeholder="BTC, ETH, SOL" required />
             <button>Check</button>
         </form>
 
         <% if (data) { %>
             <div class="card">
-                <img src="<%= data.logo %>" alt="logo">
+                <img src="<%= data.logo %>" alt="logo" />
 
                 <h2>
                     <%= data.name %> (<%= data.symbol %>)
@@ -31,11 +31,9 @@
                     24h: <%= data.change.toFixed(2) %>%
                 </p>
 
-                <p class="network">Source: <%= data.network %>
-                </p>
-
-                <iframe src="https://s.tradingview.com/widgetembed/?symbol=COINBASE:<%= data.symbol %>USD&interval=15"
-                    frameborder="0">
+                <!-- TradingView Widget -->
+                <iframe src="https://s.tradingview.com/widgetembed/?symbol=<%= data.tvSymbol %>&interval=15&theme=dark"
+                    width="100%" height="400" frameborder="0">
                 </iframe>
             </div>
             <% } %>
