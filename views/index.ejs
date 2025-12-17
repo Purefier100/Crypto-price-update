@@ -31,8 +31,10 @@
                     24h: <%= data.change.toFixed(2) %>%
                 </p>
 
-                <iframe
-                    src="https://s.tradingview.com/widgetembed/?symbol=<%= data.tradingView %>&interval=15&theme=dark"
+                <p class="network">Source: <%= data.network %>
+                </p>
+
+                <iframe src="https://s.tradingview.com/widgetembed/?symbol=COINBASE:<%= data.symbol %>USD&interval=15"
                     frameborder="0">
                 </iframe>
             </div>
