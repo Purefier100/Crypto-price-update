@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Price Checker</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Crypto Price Checker</h1>
+
+        <!-- Search Form -->
+        <form id="searchForm">
+            <input id="symbolInput" name="symbol" placeholder="Coin symbol or token address" required />
+            <button type="submit">Check Price</button>
+        </form>
+
+        <!-- Error Message -->
+        <p id="error" class="error"></p>
+
+        <!-- Coin Data -->
+        <div class="card" id="card" style="display:none;">
+            <div class="top">
+                <img id="logo" src="" alt="Logo" />
+                <h2 id="name"></h2>
+            </div>
+
+            <p class="price" id="price"></p>
+            <p class="change" id="change"></p>
+            <p class="network" id="network"></p>
+            <div id="chartContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById("searchForm");
+        const input = document.getElementById("symbolInput");
+        const errorEl = document.getElementById("error");
+        const card = document.getElementById("card");
+        const logo = document.getElementById("logo");
+        const nameEl = document.getElementById("name");
+        const priceEl = document.getElementById("price");
+        const changeEl = document.getElementById("change");
+        const networkEl = document.getElementById("network");
+        const chartContainer = document.getElementById("chartContainer");
+
+        let currentSymbol = null;
+
+        async function fetchPrice(symbol) {
+            try {
+                const res = await fetch(`/price?symbol=${symbol}`);
+                const text = await res.text();
+                // Replace whole body temporarily to extract rendered HTML
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, "text/html");
+
+                const data = doc.querySelector(".card");
+                const errorMsg = doc.querySelector(".error");
+
+                if (data) {
+                    card.style.display = "block";
+                    logo.src = data.querySelector("img").src;
+                    nameEl.textContent = data.querySelector("h2").textContent;
+                    priceEl.textContent = data.querySelector(".price").textContent;
+                    const changeText = data.querySelector(".change").textContent;
+                    changeEl.textContent = changeText;
+                    changeEl.className = "change " + (changeText.includes("-") ? "down" : "up");
+                    networkEl.textContent = data.querySelector(".network").textContent;
+
+                    // Chart
+                    const iframe = data.querySelector("iframe");
+                    chartContainer.innerHTML = iframe ? iframe.outerHTML : "";
+                    errorEl.textContent = "";
+                } else {
+                    card.style.display = "none";
+                    errorEl.textContent = errorMsg ? errorMsg.textContent : "Token not found";
+                }
+            } catch (err) {
+                card.style.display = "none";
+                errorEl.textContent = "Error fetching price";
+            }
+        }
+
+        form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            currentSymbol = input.value.trim();
+            fetchPrice(currentSymbol);
+        });
+
+        // Auto-refresh every 30s
+        setInterval(() => {
+            if (currentSymbol) fetchPrice(currentSymbol);
+        }, 30000);
+    </script>
+</body>
+
+</html>
