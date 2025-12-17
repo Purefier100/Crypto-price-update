@@ -9,93 +9,107 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Load environment variable for CMC API key
+const CMC_API_KEY = process.env.CMC_API_KEY || "da2668580d7548ae9e3ff54712ab19a7";
+
 app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
-// Load Bybit tickers
-let bybitTickers = [];
+// Fetch ALL markets from CoinMarketCap
+let coinMarketData = [];
 
-async function loadBybitTickers() {
+async function loadCMCData() {
     try {
-        const response = await axios.get("https://api.bybit.com/v5/market/tickers", {
-            params: { category: "spot" }
-        });
+        // 1) Get latest market data (price, percent change, etc.)
+        const listings = await axios.get(
+            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
+            {
+                headers: {
+                    "X-CMC_PRO_API_KEY": CMC_API_KEY,
+                    Accept: "application/json",
+                },
+                params: {
+                    start: 1,
+                    limit: 5000,   // request up to 5000 listings
+                    convert: "USD",
+                },
+            }
+        );
 
-        // Example response structure: { retCode, result: { list: [ { symbol, lastPrice, price24hPcnt }, ... ] } }
-        if (response.data.result && response.data.result.list) {
-            bybitTickers = response.data.result.list;
-            console.log(`✅ Loaded ${bybitTickers.length} spot tickers from Bybit`);
-        }
+        const coins = listings.data.data;
+
+        // 2) Get detailed metadata (logos) for all listings
+        const ids = coins.map((c) => c.id).join(",");
+        const info = await axios.get(
+            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/info",
+            {
+                headers: {
+                    "X-CMC_PRO_API_KEY": CMC_API_KEY,
+                    Accept: "application/json",
+                },
+                params: {
+                    id: ids,
+                },
+            }
+        );
+
+        // 3) Merge price + logo
+        coinMarketData = coins.map((c) => ({
+            id: c.id,
+            name: c.name,
+            symbol: c.symbol,
+            price: c.quote.USD.price,
+            change: c.quote.USD.percent_change_24h,
+            logo: info.data.data[c.id]?.logo || null,
+        }));
+
+        console.log(`Loaded ${coinMarketData.length} coins from CoinMarketCap`);
     } catch (err) {
-        console.error("Failed to load Bybit tickers:", err.message);
+        console.error("CMC API load error:", err.response?.data || err.message);
     }
 }
 
-loadBybitTickers();
-setInterval(loadBybitTickers, 5 * 60 * 1000); // refresh every 5 mins
-
-// Optional: load CoinGecko list for logos
-let coinGeckoList = [];
-async function loadCoinGeckoList() {
-    try {
-        const cgRes = await axios.get("https://api.coingecko.com/api/v3/coins/list");
-        coinGeckoList = cgRes.data; // [{ id, symbol, name }]
-        console.log("Loaded CoinGecko coin list for logo matching");
-    } catch (err) {
-        console.error("Failed to load CoinGecko list:", err.message);
-    }
-}
-
-loadCoinGeckoList();
-
-// Helper to get logo from CoinGecko by symbol
-async function fetchLogoBySymbol(symbol) {
-    try {
-        const coin = coinGeckoList.find(c => c.symbol.toLowerCase() === symbol.toLowerCase());
-        if (coin) {
-            const cgDetail = await axios.get(`https://api.coingecko.com/api/v3/coins/${coin.id}`);
-            return cgDetail.data.image.large;
-        }
-    } catch (err) {
-        // ignore if not found
-    }
-    return null;
-}
+// Load initially & refresh every 5 minutes
+loadCMCData();
+setInterval(loadCMCData, 5 * 60 * 1000);
 
 app.get("/", (req, res) => {
     res.render("index", { data: null, error: null });
 });
 
-app.get("/price", async (req, res) => {
-    const input = req.query.symbol?.trim();
-    if (!input) return res.render("index", { data: null, error: "Enter coin symbol" });
-
-    const symbol = input.toUpperCase();
-
-    try {
-        const ticker = bybitTickers.find(t => t.symbol.toUpperCase() === symbol || t.symbol.toUpperCase().startsWith(symbol));
-        if (!ticker) throw new Error("Pair not found on Bybit");
-
-        let logo = await fetchLogoBySymbol(symbol.replace(/USDT$/i, "")); // try match token symbol for logo
-
-        const data = {
-            name: ticker.symbol,
-            symbol: ticker.symbol,
-            price: ticker.lastPrice,
-            change: (ticker.price24hPcnt * 100).toFixed(2), // convert decimal to %
-            logo: logo,
-            network: "Bybit Spot",
-            chartSymbol: `${ticker.symbol.replace(/USDT$/i, "")}USD` // tradingview if applicable
-        };
-
-        res.render("index", { data, error: null });
-    } catch (err) {
-        res.render("index", { data: null, error: "Coin not found on Bybit" });
+app.get("/price", (req, res) => {
+    const input = req.query.symbol?.trim().toUpperCase();
+    if (!input) {
+        return res.render("index", { data: null, error: "Enter a symbol" });
     }
+
+    const coin = coinMarketData.find(
+        (c) => c.symbol.toUpperCase() === input
+    );
+
+    if (!coin) {
+        return res.render("index", { data: null, error: "Coin not found" });
+    }
+
+    res.render("index", {
+        data: {
+            name: coin.name,
+            symbol: coin.symbol,
+            price: coin.price.toFixed(6),
+            change: coin.change.toFixed(2),
+            logo: coin.logo,
+            network: "CMC",
+            chartSymbol: `${coin.symbol}USD`,
+        },
+        error: null,
+    });
 });
 
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+app.listen(PORT, () =>
+    console.log(`Server running on http://localhost:${PORT}`)
+);
+
 
 
 
