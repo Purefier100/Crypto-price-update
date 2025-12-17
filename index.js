@@ -13,85 +13,115 @@ app.use(express.static(path.join(__dirname, "public")));
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
-// 🔑 Your CoinAPI key
-const COINAPI_KEY = "70dcea0e";
+/* ------------------------------
+   Cache CoinGecko market data
+--------------------------------*/
+let cgMarkets = [];
 
-// Cache assets from CoinAPI for name lookup
-let assetList = [];
-
-// Load assets (name + ID) once
-async function loadAssets() {
+async function loadCoinGecko() {
     try {
-        const res = await axios.get("https://rest.coinapi.io/v1/assets", {
-            headers: { "X-CoinAPI-Key": COINAPI_KEY }
-        });
-        assetList = res.data; // array of { asset_id, name, type_is_crypto }
-        console.log(`Loaded ${assetList.length} assets from CoinAPI`);
-    } catch (err) {
-        console.error("Failed to load assets:", err.message);
-    }
-}
-
-loadAssets();
-
-// Helper to get CoinGecko logo by symbol
-async function fetchLogo(symbol) {
-    try {
-        const cg = await axios.get(
-            `https://api.coingecko.com/api/v3/coins/${symbol.toLowerCase()}`
+        const res = await axios.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            {
+                params: {
+                    vs_currency: "usd",
+                    order: "market_cap_desc",
+                    per_page: 250,
+                    page: 1,
+                    sparkline: false,
+                },
+            }
         );
-        return cg.data.image.large;
-    } catch {
-        return null;
+        cgMarkets = res.data;
+        console.log("✅ CoinGecko market data loaded");
+    } catch (err) {
+        console.error("CoinGecko error:", err.message);
     }
 }
 
+// initial + refresh every 5 minutes
+loadCoinGecko();
+setInterval(loadCoinGecko, 5 * 60 * 1000);
+
+/* ------------------------------
+   Routes
+--------------------------------*/
 app.get("/", (req, res) => {
     res.render("index", { data: null, error: null });
 });
 
 app.get("/price", async (req, res) => {
-    const input = req.query.symbol?.trim().toUpperCase();
-    if (!input) return res.render("index", { data: null, error: "Enter a symbol" });
+    const input = req.query.symbol?.trim().toLowerCase();
+    if (!input) {
+        return res.render("index", { data: null, error: "Enter a symbol or contract" });
+    }
+
+    const isAddress = input.startsWith("0x") && input.length === 42;
 
     try {
-        // Find asset name
-        const asset = assetList.find(a => a.asset_id === input);
-        const assetName = asset ? asset.name : input;
+        /* ------------------------------
+           1️⃣ CoinGecko (SYMBOL SEARCH)
+        --------------------------------*/
+        if (!isAddress) {
+            const coin = cgMarkets.find(
+                c =>
+                    c.symbol.toLowerCase() === input ||
+                    c.name.toLowerCase() === input
+            );
 
-        // Get price from CoinAPI
-        const priceRes = await axios.get(
-            `https://rest.coinapi.io/v1/exchangerate/${input}/USD`,
-            { headers: { "X-CoinAPI-Key": COINAPI_KEY } }
+            if (coin) {
+                return res.render("index", {
+                    data: {
+                        name: coin.name,
+                        symbol: coin.symbol.toUpperCase(),
+                        price: coin.current_price,
+                        change: coin.price_change_percentage_24h,
+                        logo: coin.image,
+                        network: "CoinGecko",
+                    },
+                    error: null,
+                });
+            }
+        }
+
+        /* ------------------------------
+           2️⃣ DexScreener (FALLBACK)
+        --------------------------------*/
+        const dex = await axios.get(
+            `https://api.dexscreener.com/latest/dex/search?q=${input}`
         );
 
-        const price = priceRes.data.rate; // current price in USD
+        const pairs = dex.data.pairs;
+        if (!pairs || pairs.length === 0) throw new Error();
 
-        // CoinAPI does not provide 24h change in this endpoint
-        const change24h = null; // not available here
+        const best = pairs.sort(
+            (a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+        )[0];
 
-        // Get logo from CoinGecko fallback
-        const logo = await fetchLogo(input);
-
-        res.render("index", {
+        return res.render("index", {
             data: {
-                name: assetName,
-                symbol: input,
-                price: price.toFixed(6),
-                change: change24h,
-                logo,
-                network: "CoinAPI",
-                chartSymbol: `${input}USD`,
+                name: best.baseToken.name,
+                symbol: best.baseToken.symbol,
+                price: best.priceUsd,
+                change: best.priceChange?.h24 || 0,
+                logo: best.baseToken.logoURI,
+                network: best.chainId.toUpperCase(),
             },
-            error: null
+            error: null,
         });
+
     } catch (err) {
-        console.error(err.response?.data || err.message);
-        res.render("index", { data: null, error: "Coin not found or unsupported" });
+        return res.render("index", {
+            data: null,
+            error: "Token not found",
+        });
     }
 });
 
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+app.listen(PORT, () =>
+    console.log(`✅ Server running at http://localhost:${PORT}`)
+);
+
 
 
 
